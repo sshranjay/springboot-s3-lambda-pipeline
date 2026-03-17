@@ -2,7 +2,7 @@
 
 This project demonstrates a simple **event-driven workflow using AWS services and a Spring Boot backend**.
 
-The idea behind the project is straightforward: a REST API accepts a file upload, stores the file in Amazon S3, and the upload automatically triggers a Lambda function which processes the event and logs information to CloudWatch.
+Files uploaded through the API are stored in Amazon S3. Each upload triggers an AWS Lambda function via an S3 event notification, and the Lambda logs details about the file to CloudWatch.
 
 The goal of the project was to get hands-on experience with AWS services and understand how event-driven architectures work.
 
@@ -22,15 +22,21 @@ Client → Spring Boot API → Amazon S3 → S3 Event Notification → AWS Lambd
 
 ## Components
 
-### File Upload API (Spring Boot)
+### File Upload API
 
 A small Spring Boot application that exposes an endpoint to upload files.
 
 Endpoint:
 
-POST /files/upload
+`POST /files/upload`
 
 The API accepts a multipart file and uploads it to the configured S3 bucket.
+
+### List Uploaded Files
+
+`GET /files`
+
+Returns the list of files currently stored in the S3 bucket along with basic metadata such as file size and last modified timestamp.
 
 ---
 
@@ -60,31 +66,26 @@ The logs can be viewed in **CloudWatch**.
 
 ## Running the Project
 
-1. Configure AWS credentials locally using:
-
-```
-aws configure
-```
+1. Configure AWS credentials locally using: 
+`aws configure`
 
 2. Start the Spring Boot API.
 
 3. Send a file upload request:
-
-```
-POST /files/upload
-```
+`POST /files/upload`
 
 4. Verify the file appears in the S3 bucket.
 
 5. Check the Lambda logs in CloudWatch to confirm the event was processed.
+6. List files stored in S3:
+`GET /files`
 
 ---
 
 ## Future Improvements
 
-Some ideas for extending the project:
-
-* Add an API to list files stored in S3
+Some things I may add later:
+* API to download files from S3
 * Store uploaded file metadata in DynamoDB
 * Add Docker support for the API
 * Automate infrastructure setup with Terraform
