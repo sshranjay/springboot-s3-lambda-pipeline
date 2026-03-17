@@ -1,7 +1,9 @@
 package com.example.s3_file_upload_api.service;
 
 import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.model.ObjectListing;
 import com.amazonaws.services.s3.model.PutObjectRequest;
+import com.amazonaws.services.s3.model.S3ObjectSummary;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -9,6 +11,10 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @Service
 public class S3Service {
@@ -40,6 +46,27 @@ public class S3Service {
         } finally {
             Files.deleteIfExists(convertedFile.toPath());
         }
+    }
+
+    public List<Map<String, Object>> listFiles() {
+
+        //Calls S3 and retrieves all objects inside the bucket
+        ObjectListing objectListing = amazonS3.listObjects(bucketName);
+
+        List<Map<String, Object>> files = new ArrayList<>();
+
+        for (S3ObjectSummary object : objectListing.getObjectSummaries()) {
+
+            Map<String, Object> fileInfo = new HashMap<>();
+
+            fileInfo.put("fileName", object.getKey());
+            fileInfo.put("size", object.getSize());
+            fileInfo.put("lastModified", object.getLastModified());
+
+            files.add(fileInfo);
+        }
+
+        return files;
     }
 
 }

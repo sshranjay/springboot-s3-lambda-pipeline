@@ -7,6 +7,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/files")
@@ -27,5 +29,10 @@ public class FileController {
         s3Service.uploadFile(file);
 
         return ResponseEntity.status(HttpStatus.CREATED).body("File uploaded successfully");
+    }
+
+    @GetMapping
+    public List<Map<String, Object>> listFiles() {
+        return s3Service.listFiles();
     }
 }
