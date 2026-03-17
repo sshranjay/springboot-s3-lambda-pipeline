@@ -49,12 +49,12 @@ The logs can be viewed in **CloudWatch**.
 
 ## Tech Stack
 
-*Java
-*Spring Boot
-*AWS S3
-*AWS Lambda
-*AWS CloudWatch
-*Maven
+* Java
+* Spring Boot
+* AWS S3
+* AWS Lambda
+* AWS CloudWatch
+* Maven
 
 ---
 
