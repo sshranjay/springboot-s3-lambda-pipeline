@@ -66,19 +66,109 @@ The logs can be viewed in **CloudWatch**.
 
 ## Running the Project
 
-1. Configure AWS credentials locally using: 
-`aws configure`
+### Prerequisites
 
-2. Start the Spring Boot API.
+* An AWS account with an **existing S3 bucket**
+* AWS credentials configured on your system (`aws configure` or environment variables)
+* Java 17 and Maven installed
 
-3. Send a file upload request:
-`POST /files/upload`
+### Configuration
 
-4. Verify the file appears in the S3 bucket.
+The Spring Boot API reads its configuration from **environment variables**:
 
-5. Check the Lambda logs in CloudWatch to confirm the event was processed.
-6. List files stored in S3:
-`GET /files`
+| Variable | Description | Example |
+|---|---|---|
+| `AWS_REGION` | AWS region where your S3 bucket lives | `us-east-1` |
+| `S3_BUCKET_NAME` | Name of your S3 bucket | `my-uploads-bucket` |
+
+AWS credentials are picked up automatically from the default credential chain (`~/.aws/credentials`, environment variables `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`, or an IAM role).
+
+### Run locally
+
+```bash
+# 1. Set your bucket details
+export AWS_REGION=us-east-1
+export S3_BUCKET_NAME=my-uploads-bucket
+
+# 2. Configure AWS credentials (if not already done)
+aws configure
+
+# 3. Start the Spring Boot API
+cd s3-file-upload-api
+mvn spring-boot:run
+```
+
+### API endpoints
+
+```
+POST /files/upload   # Upload a file to your S3 bucket
+GET  /files          # List files stored in the bucket
+```
+
+---
+
+## Deploying the Lambda Function
+
+The Lambda function (`s3-lambda-handler`) processes S3 upload events and logs file metadata to CloudWatch.
+
+### Option 1 — GitHub Actions (recommended)
+
+Add the following **repository secrets** in *Settings → Secrets and variables → Actions*:
+
+| Secret | Description |
+|---|---|
+| `AWS_ACCESS_KEY_ID` | Your AWS access key |
+| `AWS_SECRET_ACCESS_KEY` | Your AWS secret key |
+| `AWS_REGION` | AWS region (e.g. `us-east-1`) |
+| `S3_BUCKET_NAME` | Name of your S3 bucket |
+| `LAMBDA_FUNCTION_NAME` | Desired Lambda function name (e.g. `s3-upload-handler`) |
+| `LAMBDA_ROLE_ARN` | ARN of an IAM role with `AWSLambdaBasicExecutionRole` attached |
+
+Then trigger the **Deploy Lambda to AWS** workflow manually from the *Actions* tab, or push a change to `s3-lambda-handler/` on `main`.
+
+The workflow will:
+1. Build the Lambda fat JAR
+2. Create the Lambda function if it doesn't exist, or update it if it does
+3. Grant S3 permission to invoke the Lambda
+4. Attach an `s3:ObjectCreated:*` event trigger to your bucket
+
+### Option 2 — Deploy locally
+
+```bash
+# 1. Build the fat JAR
+cd s3-lambda-handler
+mvn clean package
+
+# 2. Create the Lambda function (first time only)
+aws lambda create-function \
+  --function-name s3-upload-handler \
+  --runtime java17 \
+  --role arn:aws:iam::YOUR_ACCOUNT_ID:role/YOUR_LAMBDA_ROLE \
+  --handler com.example.lambda.S3UploadHandler::handleRequest \
+  --zip-file fileb://target/s3-lambda-handler-1.0-SNAPSHOT.jar \
+  --timeout 30 \
+  --memory-size 512 \
+  --region YOUR_REGION
+
+# 3. Grant S3 permission to invoke it
+aws lambda add-permission \
+  --function-name s3-upload-handler \
+  --statement-id s3-trigger \
+  --action lambda:InvokeFunction \
+  --principal s3.amazonaws.com \
+  --source-arn arn:aws:s3:::YOUR_BUCKET_NAME \
+  --source-account YOUR_ACCOUNT_ID
+
+# 4. Attach the S3 event notification
+aws s3api put-bucket-notification-configuration \
+  --bucket YOUR_BUCKET_NAME \
+  --notification-configuration '{
+    "LambdaFunctionConfigurations": [{
+      "LambdaFunctionArn": "arn:aws:lambda:YOUR_REGION:YOUR_ACCOUNT_ID:function:s3-upload-handler",
+      "Events": ["s3:ObjectCreated:*"]
+    }]
+  }'
+```
 
 ---
 
@@ -91,9 +181,15 @@ Some things I may add later:
 
 ---
 
-## Docker Image 
+## Docker Image
 
-To use this service pull the doocker image from the below given repository.
-```
-docker push sshranjay/s3-file-api:latest
+To run the Spring Boot API in Docker, set the required environment variables at container start:
+
+```bash
+docker run -p 8080:8080 \
+  -e AWS_REGION=us-east-1 \
+  -e S3_BUCKET_NAME=my-uploads-bucket \
+  -e AWS_ACCESS_KEY_ID=YOUR_KEY \
+  -e AWS_SECRET_ACCESS_KEY=YOUR_SECRET \
+  sshranjay/s3-file-api:latest
 ```
