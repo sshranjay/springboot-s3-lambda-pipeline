@@ -20,7 +20,7 @@ jobs:
           java-version: '17'
 
       - name: Build with Maven
-        working-directory: file-upload-api
+        working-directory: s3-file-upload-api
         run: mvn clean package -DskipTests=false
 
       - name: Log in to Docker Hub
@@ -30,7 +30,7 @@ jobs:
           password: ${{ secrets.DOCKER_TOKEN }}
 
       - name: Build Docker Image
-        working-directory: file-upload-api
+        working-directory: s3-file-upload-api
         run: docker build -t ${{ secrets.DOCKER_USERNAME }}/s3-file-api:latest .
 
       - name: Push Docker Image
