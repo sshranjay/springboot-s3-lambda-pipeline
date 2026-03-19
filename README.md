@@ -87,5 +87,13 @@ The logs can be viewed in **CloudWatch**.
 Some things I may add later:
 * API to download files from S3
 * Store uploaded file metadata in DynamoDB
-* Add Docker support for the API
 * Automate infrastructure setup with Terraform
+
+---
+
+## Docker Image 
+
+To use this service pull the doocker image from the below given repository.
+```
+docker push sshranjay/s3-file-api:latest
+```
