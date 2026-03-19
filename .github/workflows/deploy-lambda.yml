@@ -1,0 +1,123 @@
+name: Deploy Lambda to AWS
+
+on:
+  workflow_dispatch:
+    inputs:
+      s3_bucket_name:
+        description: 'Name of the existing S3 bucket to attach the Lambda trigger to'
+        required: true
+      lambda_function_name:
+        description: 'Name to give the Lambda function (created if it does not exist)'
+        required: true
+        default: 's3-upload-handler'
+      aws_region:
+        description: 'AWS region where the bucket and Lambda live'
+        required: true
+        default: 'us-east-1'
+  push:
+    branches:
+      - main
+    paths:
+      - 's3-lambda-handler/**'
+
+jobs:
+  deploy-lambda:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    env:
+      S3_BUCKET_NAME: ${{ github.event.inputs.s3_bucket_name || secrets.S3_BUCKET_NAME }}
+      LAMBDA_FUNCTION_NAME: ${{ github.event.inputs.lambda_function_name || secrets.LAMBDA_FUNCTION_NAME }}
+      AWS_REGION: ${{ github.event.inputs.aws_region || secrets.AWS_REGION }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Build Lambda JAR
+        working-directory: s3-lambda-handler
+        run: mvn clean package -DskipTests
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Create or update Lambda function
+        id: deploy
+        run: |
+          JAR_PATH="s3-lambda-handler/target/s3-lambda-handler-1.0-SNAPSHOT.jar"
+          HANDLER="com.example.lambda.S3UploadHandler::handleRequest"
+
+          if aws lambda get-function --function-name "$LAMBDA_FUNCTION_NAME" > /dev/null 2>&1; then
+            echo "Updating existing Lambda function..."
+            aws lambda update-function-code \
+              --function-name "$LAMBDA_FUNCTION_NAME" \
+              --zip-file "fileb://$JAR_PATH"
+          else
+            echo "Creating new Lambda function..."
+            aws lambda create-function \
+              --function-name "$LAMBDA_FUNCTION_NAME" \
+              --runtime java17 \
+              --role "${{ secrets.LAMBDA_ROLE_ARN }}" \
+              --handler "$HANDLER" \
+              --zip-file "fileb://$JAR_PATH" \
+              --timeout 30 \
+              --memory-size 512
+          fi
+
+          LAMBDA_ARN=$(aws lambda get-function \
+            --function-name "$LAMBDA_FUNCTION_NAME" \
+            --query 'Configuration.FunctionArn' \
+            --output text)
+          echo "lambda_arn=$LAMBDA_ARN" >> "$GITHUB_OUTPUT"
+
+      - name: Grant S3 permission to invoke Lambda
+        run: |
+          LAMBDA_ARN="${{ steps.deploy.outputs.lambda_arn }}"
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          SOURCE_ARN="arn:aws:s3:::$S3_BUCKET_NAME"
+
+          # Remove stale permission if it exists, then re-add
+          aws lambda remove-permission \
+            --function-name "$LAMBDA_FUNCTION_NAME" \
+            --statement-id "s3-trigger" 2>/dev/null || true
+
+          aws lambda add-permission \
+            --function-name "$LAMBDA_FUNCTION_NAME" \
+            --statement-id "s3-trigger" \
+            --action "lambda:InvokeFunction" \
+            --principal "s3.amazonaws.com" \
+            --source-arn "$SOURCE_ARN" \
+            --source-account "$ACCOUNT_ID"
+
+      - name: Attach S3 event notification
+        run: |
+          LAMBDA_ARN="${{ steps.deploy.outputs.lambda_arn }}"
+
+          NOTIFICATION=$(cat <<EOF
+          {
+            "LambdaFunctionConfigurations": [
+              {
+                "LambdaFunctionArn": "$LAMBDA_ARN",
+                "Events": ["s3:ObjectCreated:*"]
+              }
+            ]
+          }
+          EOF
+          )
+
+          aws s3api put-bucket-notification-configuration \
+            --bucket "$S3_BUCKET_NAME" \
+            --notification-configuration "$NOTIFICATION"
+
+          echo "S3 event trigger configured: s3://$S3_BUCKET_NAME -> $LAMBDA_ARN"
